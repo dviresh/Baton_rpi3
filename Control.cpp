@@ -449,9 +449,9 @@ int servoSetup()
    acceleration_bff(1) = l_ay;
    acceleration_bff(2) = l_az;
 
-   omega_bff(0) = l_gx;
-   omega_bff(1) = l_gy;
-   omega_bff(2) = l_gz; 
+   omega_bff(0) = M_PI/180.0*l_gx;
+   omega_bff(1) = M_PI/180.0*l_gy;
+   omega_bff(2) = M_PI/180.0*l_gz; 
 //*********************************************************************** -- Rotational Matrices -- ****************************************************************************************
 
     // Roll
@@ -511,41 +511,33 @@ InertialMatrix(2,2) = 1.0;
 
 // Jacobian Matrix 
 
-jacobian(0,0) = InertialMatrix(0,0);
-jacobian(0,1) = 0;
-jacobian(0,2) = -InertialMatrix(0,0)*sin(-pitch);
+jacobian(0,0) = 1.0;
+jacobian(0,1) = sin(roll)*tan(pitch);
+jacobian(0,2) = cos(roll)*tan(pitch);
 jacobian(1,0) = 0;
-jacobian(1,1) = (InertialMatrix(1,1)*cos(-roll)*cos(-roll))+(InertialMatrix(2,2)*sin(-roll)*sin(-roll));
-jacobian(1,2) = (InertialMatrix(1,1)-InertialMatrix(2,2))*cos(-roll)*sin(-roll)*cos(-pitch);
-jacobian(2,0) = -InertialMatrix(0,0)*sin(-pitch);
-jacobian(2,1) = (InertialMatrix(1,1)-InertialMatrix(2,2))*cos(-roll)*sin(-roll)*cos(-pitch);
-jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,1)*(sin(-roll)*sin(-roll))*(cos(-pitch)*cos(-pitch)))+(InertialMatrix(2,2)*(cos(-roll)*cos(-roll))*(cos(-pitch)*cos(-pitch)));
+jacobian(1,1) = cos(roll);
+jacobian(1,2) = -sin(roll);
+jacobian(2,0) = 0;
+jacobian(2,1) = sin(roll)/cos(pitch);
+jacobian(2,2) = cos(roll)/cos(pitch);
 
 //************************************************** -- Intertial Frame Parameters -- *******************************************************************************************************
 
 
     acceleration_if = rot_bi*acceleration_bff;
     acceleration_if(2) = acceleration_if(2) - 1.0;
-    acceleration_if *= G_SI;
-    /*
-    if(l_resetValue<1450){
-    velocity_k1if << 0,0,0;
-    position_k1if << 0,0,0;
-    printf("values reset: position(k1if):%f\t%f\t%f \t velocity(k1if):%f\t%f\t%f \n",position_k1if(0),position_k1if(1),position_k1if(2),velocity_k1if(0),velocity_k1if(1),velocity_k1if(2) );
-    }*/ 
+    acceleration_if *= G_SI; 
    
     velocity_k1if = velocity_kif+acceleration_if*dt;
     position_k1if = position_kif+velocity_k1if*dt;
-     printf("roll:%f\tposition(k1if):%f\t%f\t%f \t velocity(k1if):%f\t%f\t%f \n",roll,position_k1if(0),position_k1if(1),position_k1if(2),velocity_k1if(0),velocity_k1if(1),velocity_k1if(2));
+     //printf("roll:%f\tposition(k1if):%f\t%f\t%f \t velocity(k1if):%f\t%f\t%f \n",roll,position_k1if(0),position_k1if(1),position_k1if(2),velocity_k1if(0),velocity_k1if(1),velocity_k1if(2));
 
  //****************************************************************************************************************************************************************************************  
 //********************* -- Reseting the velocity position and yaw values on moving the throttle stick to left -- *************************************************************************** //*****************************************************************************************************************************************************************************************  
 
-    if(l_resetValue<1450){
+    if(l_resetValue<960){
     velocity_k1if << 0,0,0;
     position_k1if << 0,0,0;
-    roll = 0;
-    printf("values reset: roll:%f\tposition(k1if):%f\t%f\t%f \t velocity(k1if):%f\t%f\t%f \n",roll,position_k1if(0),position_k1if(1),position_k1if(2),velocity_k1if(0),velocity_k1if(1),velocity_k1if(2) );
     }
 
     velocity_kif = velocity_k1if;
@@ -556,26 +548,25 @@ jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,
     angle_kif(2) = yaw; 
 
    omega_kif = jacobian*omega_bff;
-   omega_kif *= M_PI/180.0;
+   
 
 
-/*
-    omega_kif(0) = l_gx*M_PI/180.0;
-    omega_kif(1) = l_gy*M_PI/180.0;
-    omega_kif(2) = l_gz*M_PI/180.0;
-*/
 
 
-//  printf("gx_if:%f\t gy_if:%f\t gz_if:%f \n",omega_kif(0),omega_kif(1),omega_kif(2));  
 
-    //printf("%f, %f, %f\n", roll, pitch, yaw);
+
 
 //**************************************************************************************** -- Auto Controller -- ****************************************************************************
     // WARNING: l_gz is in degrees and l_ax is normalized to 1.0
 
-    float k1 = -1, k2 = -0.1; // Thrust gains
+/*    float k1 = -1, k2 = -0.1; // Thrust gains
     float k3 = -1, k4 = -1, k7 =-1, k8=-8; // alpha gains
-    float k5 = 1, k6 = 1,k9 = -1, k10 = -4; // beta gains
+    float k5 = 1, k6 = -1,k9 = -1, k10 = -4; // beta gains
+*/
+    float k1 = -1, k2 = -0.1; // Thrust gains
+    float k3 = -1, k4 = -0.1, k7 =-1, k8=-8; // alpha gains
+    float k5 = -1, k6 = -0.1,k9 = -1, k10 = -4; // beta gains
+
 
     // Setting linear position and velocity gains to zero temporarily because estimates are bad.
     k7 = 0; k8 = 0; k9 = 0; k10 = 0;
@@ -584,21 +575,6 @@ jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,
     velocity_des_kif  << 0,0,0;
     angle_des_kif     << 0,0,0;
     omega_des_kif     << 0,0,0;
-/*
-   if(l_resetValue<960){
-    omega_kif     << 0,0,0;
-    position_kif  << 0,0,0;
-    velocity_kif  << 0,0,0;
-    printf("reset on:\t omega:%f\t%f\t%f \tposition:%f\t%f\t%f \t vel:%f\t%f\t%f  \n",omega_kif(0),omega_kif(1),omega_kif(2),position_kif(0),position_kif(1),position_kif(2),velocity_kif(0),velocity_kif(1),velocity_kif(2) ); 
-   }
-  else{
-    omega_kif     = omega_kif;
-    position_kif  = position_kif;
-    velocity_kif  = velocity_kif;
-     printf("reset off:\t omega:%f\t%f\t%f \tposition:%f\t%f\t%f \t vel:%f\t%f\t%f \n",omega_kif(0),omega_kif(1),omega_kif(2),position_kif(0),position_kif(1),position_kif(2),velocity_kif(0),velocity_kif(1),velocity_kif(2) );
-
-  } 
-*/ 
 
    // float cmd_thrust = mass * G_SI + k1 * (position_kif(2) - position_des_kif(2)) + k2 * (velocity_kif(2) - velocity_des_kif(2));
     float cmd_alpha  = k3 * (angle_kif(1) - angle_des_kif(1)) + k4 * (omega_kif(1)-omega_des_kif(1)) + k7 * (position_kif(0) - position_des_kif(0)) + k8 * (velocity_kif(0) - velocity_des_kif(0));
@@ -607,7 +583,9 @@ jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,
         
   float ms_2 = AutoBetaMs(cmd_beta);
   float ms_1 = AutoAlphaMs(cmd_alpha);
-  //printf("ms1:%f\t,ms2:%f\n",ms_1,ms_2);
+
+
+  printf("ms1:%f\t,ms2:%f\n",ms_1,ms_2);
 //   printf("cmd_alpha:%f\t,cmd_beta:%f\n",cmd_alpha,cmd_beta);
 //      printf("roll:%f\t pitch:%f\n",roll,pitch);
 //**************************************************************************************** -- Manual Controller -- *************************************************************************
@@ -626,7 +604,7 @@ jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,
  //   cout<<thrust<<endl;
 //******************************************************************************************* -- Output To Pins -- ************************************************************************
 //2op
-    Output(ms_1,0,thrust);
+    Output(ms_1,ms_2,thrust);
 
 
 
@@ -635,15 +613,15 @@ jacobian(2,2) = (InertialMatrix(0,0)*sin(-pitch)*sin(-pitch))+(InertialMatrix(1,
     g_state[0]=position_k1if(0);
     g_state[1]=position_k1if(1);
     g_state[2]=position_k1if(2);
-    g_state[3]=roll;
-    g_state[4]=pitch;
-    g_state[5]= yaw;
+    g_state[3]=angle_kif(0);
+    g_state[4]=angle_kif(1);
+    g_state[5]= angle_kif(2);
     g_state[6]=velocity_k1if(0);
     g_state[7]=velocity_k1if(1);
     g_state[8]=velocity_k1if(2);
-    g_state[9]  = l_gx;
-    g_state[10] = l_gy;
-    g_state[11] = l_gz;
+    g_state[9]  = omega_kif(0);
+    g_state[10] = omega_kif(1);
+    g_state[11] = omega_kif(2);
 //*************************************************** -- Storing the inputs from RC Trasmitter -- ******************************************************************************************
     g_inputs[0] = l_periodAlphaAngle;
     g_inputs[1]= l_periodBetaAngle;
@@ -685,7 +663,7 @@ void* inputThread(void *)
     int l_periodAlphaAngle = rcin.read(0);
     int l_periodBetaAngle  = rcin.read(1);
     int l_periodRotorSpeed = rcin.read(2);
-    int l_resetValue       = rcin.read(4);
+    int l_resetValue       = rcin.read(5);
     pthread_mutex_lock(&rcInputMutex);
     g_AlphaControlRad        = l_periodAlphaAngle;
     g_BetaControlRad         = l_periodBetaAngle;
@@ -756,26 +734,17 @@ void* outputThread(void *)
     // printf("RC thrust: %d\tRC alpha: %d\tRC beta: %d\n", l_period0, l_period1, l_period2);
 
     //*********************************************************************** -- Outputting the Baton State Variables -- ***********************************************************************
-    // printf("System States\n\t");
-    //printf("%0.6d\n",startTime);
-    //printf("%lu,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f\n",startTime,l_state[0],l_state[1],l_state[2],l_state[3],l_state[4],l_state[5],l_state[6],l_state[7],l_state[8],l_state[9],l_state[10],l_state[11]);
+    
+    
+//printf("%lu,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f\n",startTime,l_state[0],l_state[1],l_state[2],l_state[3],l_state[4],l_state[5],l_state[6],l_state[7],l_state[8],l_state[9],l_state[10],l_state[11]);
 
-    //printf("ax:%f\t,ay:%f\t,az:%f\n",ax,ay,az);
-
-/*
-  for (int i = 0 ; i < 12 ; i++)
-    {
-      printf("%0.6f: ", l_state[i]);
-    }
-    printf("\n\n");
-*/
-
+    
     // Get the time after the execution of the loop and sleep the appropriate number of microseconds
     gettimeofday(&tv, NULL);
     endTime = 1000000 * tv.tv_sec + tv.tv_usec;
 
     elapsed = endTime-startTime;
- ;
+ 
      elapsedOutput_t3=PERIOD_OUTPUT_LOOP-elapsed;
 
       pthread_mutex_lock(&outputMutex);
@@ -832,8 +801,8 @@ float ManualAlphaMs(int period_alpha){
 
 float AutoBetaMs(float beta){
   float beta_d = beta*180/M_PI;
-  float mb_ms =0;// 0.0214;//-0.02;//-0.0195;//-0.0173;//-0.0195;
-  float cb_ms = 1.5;//1.429;//1.425;//1.429;
+  float mb_ms =0.013;//0.0214;
+  float cb_ms =1.4;
 
   float b_ms = mb_ms*beta_d+cb_ms;
   return(b_ms);
@@ -841,9 +810,9 @@ float AutoBetaMs(float beta){
 
 float AutoAlphaMs(float alpha){
   float alpha_d = alpha*180/M_PI;
-  //cout<<alpha_d<<endl;
-  float ma_ms =0;//0.0214;//0;//0.0187;//0.0115;//0.0153;//0;//0.017;//0.0175;//0.0115;//-0.0214;// -0.0254;//-0.0208;//-0.0416;
-  float ca_ms = 1.43;//1.53086;//1.52;//1.4963;
+  
+  float ma_ms =0.015;
+  float ca_ms = 1.45;
 
   float a_ms = ma_ms*alpha_d+ca_ms;
   return(a_ms);
