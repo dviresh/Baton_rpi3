@@ -113,7 +113,7 @@ float CAlpha = 0.0003;
 #define PWM_OUTPUT_1 0		// 1
 #define PWM_OUTPUT_2 1		// 2
 #define PWM_OUTPUT_3 2		// 3
-
+#define PWM_OUTPUT_4 3		// 4
 // Thread Control Rates
 
 #define PERIOD_CONTROL_LOOP 2500	// microseconds = 1 ms
@@ -141,6 +141,7 @@ AHRS ahrs;
 PWM pwm1;
 PWM pwm2;
 PWM pwm3;
+PWM pwm4;
 RCInput rcin;
 
 pthread_mutex_t rcInputMutex;
@@ -212,6 +213,8 @@ float g_inputs[3];		// this contains [rotor_velocity, alpha, beta]
 								       ***** Timing data *****
 
 ___________________________________________________________________________________________________________________________________________________________________________________________*/
+
+
 
 float offset[3];
 struct timeval tv;
@@ -360,6 +363,13 @@ servoSetup ()
       return 0;
     }
 
+  if (!pwm4.init (PWM_OUTPUT_4))	// rotor velocity
+    {
+      fprintf (stderr, "Output Enable not set for PWM3. Are you root?\n");
+      return 0;
+    }
+
+
   // Enable each of the PWM and set the initial period
   pwm1.enable (PWM_OUTPUT_1);
   pwm1.set_period (PWM_OUTPUT_1, 200);
@@ -369,6 +379,9 @@ servoSetup ()
 
   pwm3.enable (PWM_OUTPUT_3);
   pwm3.set_period (PWM_OUTPUT_3, 200);
+
+  pwm3.enable (PWM_OUTPUT_4);
+  pwm3.set_period (PWM_OUTPUT_4, 200);
 }
 
 /*__________________________________________________________________________________________________________________________________________________________________________________________
@@ -615,8 +628,8 @@ controlThread (void *)
 
 //------------------------------------- Thrust Computation ---------------------------------
 
-      float m = 0.001;		//0.001202;// 0.001;
-      float c = -0.15;		//-0.3126;//-0.15;
+      float m =  0.001202;	// 0.001;
+      float c = -0.3126;	//-0.15;
       //cout<<l_periodRotorSpeed<<endl;
       float thrust = m * l_periodRotorSpeed + c;
 
@@ -960,9 +973,10 @@ Output (float ms1, float ms2, float ms3)
   else if (ms3 < 1.0)
     ms3 = 1.0;
 
-  pwm1.set_duty_cycle (PWM_OUTPUT_2, ms2);
-  pwm2.set_duty_cycle (PWM_OUTPUT_1, ms1);
+  pwm1.set_duty_cycle (PWM_OUTPUT_1, ms1);
+  pwm2.set_duty_cycle (PWM_OUTPUT_2, ms2);
   pwm3.set_duty_cycle (PWM_OUTPUT_3, ms3);
+  pwm4.set_duty_cycle (PWM_OUTPUT_4, ms3);
 }
 
 /*__________________________________________________________________________________________________________________________________________________________________________________________
