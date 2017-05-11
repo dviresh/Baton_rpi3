@@ -543,6 +543,8 @@ controlThread (void *)
 
 //--------------- Refresh Button: Pushing the "E" Lever on RC Transmitter ------------------------------   
 
+// up non zero -- down zero
+
 /*
    Note: Pushing the lever down will set the : Posioition and velocity values to zero. And on pushing it back up, new computed values of position and velocity will be used.
          This needs to be done because, we get both position and velocity terms upon intergration. All the sensors of baton take some time to spit to the right values upon initialization.           So the intially velcity and position terms will be an intergration of noise. Once we sensors begin to give constant values, we refresh velocity and position, so that they integrate
@@ -574,27 +576,32 @@ controlThread (void *)
     float k5 = 1, k6 = -1,k9 = -1, k10 = -4; // beta gains
 */
       float k1 = -1, k2 = -0.1;	// Thrust gai1   
-      float k3 = -1, k4 = -0.2, k7 = -1, k8 = -8;	// alpha gains     // Adjusted gain values after flight tests
-      float k5 = -1, k6 = -0.2, k9 = -1, k10 = -4;	// beta gains
+      float k3 = -0.95, k4 = -0.5, k7 = -1, k8 = -8;	// alpha gains     // Adjusted gain values after flight tests
+      float k5 = -0.95, k6 = -0.5, k9 = -1, k10 = -4;	// beta gains
 
+      k3 = -1;
+      k5 = -1;
+      k4 = 0;
+      k6 = 0;
 
       // Settiing linear position and velocity gains to zero temporarily because estimates are bad.
-      k7 = -1;
-      k8 = 0;
-      k9 = -1;
-      k10 = 0;
-
-      float x_des = (float) (l_periodBetaAngle - 1501) / 500.0 * 0.1;
+      k7 = 0;//-1;
+      k8 =  0;//0;
+      k9 = 0;//-1;
+      k10 = 0;//`0;
+/*
+      float x_des =  (float) (l_periodBetaAngle - 1501) / 500.0 * 0.1;
       float y_des = (float) (l_periodAlphaAngle - 1498) / 500.0 * 0.1;
 
       position_kif (0) = 0;
       position_kif (1) = 0;
+      velocity_kif << 0, 0, 0;
 
       position_des_kif << x_des, y_des, 0;
       velocity_des_kif << 0, 0, 0;
       angle_des_kif << 0, 0, 0;
       omega_des_kif << 0, 0, 0;
-
+*/
 //------------------------------------ Auto Controller Equations ----------------------------
 
       // float cmd_thrust = mass * G_SI + k1 * (position_kif(2) - position_des_kif(2)) + k2 * (velocity_kif(2) - velocity_des_kif(2));
@@ -609,10 +616,33 @@ controlThread (void *)
 	k9 * (position_kif (1) - position_des_kif (1)) +
 	k10 * (velocity_kif (1) - velocity_des_kif (1));
 
+    // MatrixXd klqr(4,12);
+    //  klqr << 0, 0, 1, 0, 0, 0, 0, 0, 4.1952, 0, 0, 0,
+           -0.4472, 0, 0, 0, -1.2115, 0, -0.5792, 0, 0, 0, -0.6242, 0, 
+           0, -0.4472, 0, -1.2115, 0, 0, 0, -0.5792, 0, -0.6242, 0, 0, 
+           0, 0, 0, 0, 0, 2.2361, 0, 0, 0, 0, 0, 1.2962; 
+     
+    
+      MatrixXd u(4,1);
+      MatrixXd stateError(12,1);
+ 
+      //stateError << position_kif (0) - position_des_kif (0), position_kif (1) - position_des_kif (1), position_kif (2) - position_des_kif (2), angle_kif (0) - angle_des_kif (0),angle_kif (1) - angle_des_kif (1), angle_kif (2) - angle_des_kif (2), velocity_kif (0) - velocity_des_kif (0), velocity_kif (1) - velocity_des_kif (1), velocity_kif (2) - velocity_des_kif (2), omega_kif (0) - omega_des_kif (0), omega_kif (1) - omega_des_kif (1),  omega_kif (2) - omega_des_kif (2);
+      
+     // u = -klqr*stateError;
+    
+      //cout << "Pos: " << position_kif << endl;
+      //cout << "Ang: " << angle_kif << endl;
+      //cout << "AngDes: " << angle_des_kif << endl;
+ 
+     //cout<<"end"; 
+     //cout<<stateError<<endl;
 
+     //cmd_beta = -u(2);
+     //cmd_alpha = -u(1);
+/*
       float ms_2 = AutoBetaMs (cmd_beta);
       float ms_1 = AutoAlphaMs (cmd_alpha);
-
+*/  
 
       // printf("ms1:%f\t,ms2:%f\n",ms_1,ms_2);
 //   printf("cmd_alpha:%f\t,cmd_beta:%f\n",cmd_alpha,cmd_beta);
@@ -620,11 +650,11 @@ controlThread (void *)
 
 //-------------------------------------- Manual Controller ----------------------------------
 
-/*
+
    float ms_2 = ManualBetaMs(l_periodBetaAngle);
    float ms_1 = ManualAlphaMs(l_periodAlphaAngle);
-//printf("ms1:%f\t,ms2:%f\n",ms_1,ms_2);
-*/
+printf("ms1:%f\t,ms2:%f\n",ms_1,ms_2);
+
 
 //------------------------------------- Thrust Computation ---------------------------------
 
@@ -896,11 +926,11 @@ Jaco (float roll_x, float pitch_y, float yaw_z)
 float
 ManualBetaMs (int period_beta)
 {
-  float mb = -0.0398;
-  float cb = 59.647;
+  float mb = 0.000851926;//0.00090909;//-0.0398;
+  float cb = 0.21622808;//0.1636382;//59.647;
 
-  float mb_ms = -0.0163;
-  float cb_ms = 1.378;
+  float mb_ms = 0.021;//58;//143.2;//-0.0163;
+  float cb_ms = -20.021;//-88.6;//-213.8;//1.378;
 
   float beta = mb * period_beta + cb;
   float beta_ms = mb_ms * beta + cb_ms;
@@ -913,13 +943,13 @@ float
 ManualAlphaMs (int period_alpha)
 {
   //float alpha_d=alpha*180/M_PI;
-  float ma = -0.03125;
-  float ca = 47.25;
+  float ma = 58;//0.000902527;//-0.03125;
+  float ca = -88.6;//0.174187726;//47.25;
 
-  float ma_ms = -0.0254;
-  float ca_ms = 1.467;
+  float ma_ms = 122;//-0.0254;
+  float ca_ms = -181.4;//1.467;
 
-  float alpha = ma * 7 + ca;
+  float alpha = ma * period_alpha + ca;
   float alpha_ms = ma_ms * alpha + ca_ms;
 
   return (alpha_ms);
@@ -931,8 +961,8 @@ AutoBetaMs (float beta)
 {
   float beta_d = beta * 180 / M_PI;
   // printf("beta_d:%f\n",beta_d);
-  float mb_ms = 0.016;		//0.013;//0.0214;
-  float cb_ms = 1.46;
+  float mb_ms = 0.021667;//0.012;//0.016;		//0.013;//0.0214;
+  float cb_ms = 1.43;//1.42;//1.46;
 
   float b_ms = mb_ms * beta_d + cb_ms;
   return (b_ms);
@@ -943,8 +973,8 @@ AutoAlphaMs (float alpha)
 {
   float alpha_d = alpha * 180 / M_PI;
   // printf("alpha_d:%f\n",alpha_d); 
-  float ma_ms = 0.0117;		// 0.015;
-  float ca_ms = 1.44;
+  float ma_ms = 0.0133;//0.0102564;//0.015;//0.0083;//0.0125;//0.0117;		// 0.015;
+  float ca_ms = 1.42;//1.38;//1.45;
 
   float a_ms = ma_ms * alpha_d + ca_ms;
   return (a_ms);
@@ -977,6 +1007,8 @@ Output (float ms1, float ms2, float ms3)
   pwm2.set_duty_cycle (PWM_OUTPUT_2, ms2);
   pwm3.set_duty_cycle (PWM_OUTPUT_3, ms3);
   pwm4.set_duty_cycle (PWM_OUTPUT_4, ms3);
+ printf("ms_1:%f\tms2:%f\n",ms1,ms2);
+ 
 }
 
 /*__________________________________________________________________________________________________________________________________________________________________________________________
