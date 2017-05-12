@@ -10,11 +10,12 @@
 #include <iostream>
 #include <pthread.h>
 #include <ctime>
-#include <ncurses.h>
-#include <curses.h>
+//#include <ncurses.h>
+//#include <curses.h>
 #include <sys/select.h>
 #include <termios.h>
-
+#include <fcntl.h>
+#include <string.h>
 // Project specific headers
 #include "Navio/MS5611.h"
 #include "Navio/MPU9250.h"
@@ -28,6 +29,13 @@
 using namespace std;
 using namespace Eigen;
 
+//--------------- Calibration Offsets -----------------------------
+
+float g_ms_1 = 1.36;		//1.42;             // alpha
+float g_ms_2 = 1.43;		// beta
+
+
+
 /*__________________________________________________________________________________________________________________________________________________________________________________________
 *
 *
@@ -39,10 +47,12 @@ using namespace Eigen;
 //----------------------------------------------------------------------------------------------------------------------
 //                               Functions
 //----------------------------------------------------------------------------------------------------------------------
-
+void set_mode (int);
+int get_key ();
 //char getch(void);
-void Output (float, float, float);	// Outputs the computed milliseconds to Navio pins
-int kbhit (void);			// Function to detect the keypress from keboard
+void Output (float, float);	// Outputs the computed milliseconds to Navio pins
+int kbhit (void);		// Function to detect the keypress from keboard
+//int getch();
 float ComputeAlphaSlope (float);
 float ComputeBetaSlope (float);
 float AutoAlphaMs (float);	//  Converts  Alpha angle to ms for -- Auto Controller
@@ -111,6 +121,12 @@ float cb_ms;
 float ma_ms;
 float mb_ms;
 
+//----- Global pulse variables
+
+//float g_ms_1 = 1.42;          // alpha
+//float g_ms_2 = 1.43;          // beta
+
+
 // Output Pin Definitions
 
 #define PWM_OUTPUT_1 0		// 1
@@ -119,8 +135,8 @@ float mb_ms;
 #define PWM_OUTPUT_4 3		// 4
 // Thread Control Rates
 
-#define PERIOD_CONTROL_LOOP 2500	// microseconds = 1 ms
-#define PERIOD_INPUT_LOOP   10000	// microseconds = 10 ms
+#define PERIOD_CONTROL_LOOP 1000	// microseconds = 1 ms
+#define PERIOD_CALIBRATION_LOOP   10000	// microseconds = 10 ms
 #define PERIOD_OUTPUT_LOOP  100000	// microseconds = 100 ms
 
 
@@ -405,41 +421,16 @@ controlThread (void *)
 
   float dt = (float) PERIOD_CONTROL_LOOP / 1000000.0;
 
-// Inertial Frame Parameters Initializaion
-
-// Velocities
-
-  velocity_kif (0) = 0.0;
-  velocity_kif (1) = 0.0;
-  velocity_kif (2) = 0.0;
-
-// Positions
-
-  position_kif (0) = 0.0;
-  position_kif (1) = 0.0;
-  position_kif (2) = 0.0;
-
-  char cal_a;
-  char cal_b;
-  char d;
-
-  float l_ca_ms = 1.45;
-  float l_ma_ms;
-  float l_cb_ms = 1.42;
-  float l_mb_ms;
 
 
-  float a;
-  float b;
+  float l_ms_1;
+  float l_ms_2;
   char c = '0';
-  
-  
-  cout<<"calibration on? y/n "<<endl;
-  cin>>d;
+
+
 
   while (1)
     {
-      if(d=='n'){
       // Get the time at the start of the loop
       gettimeofday (&tv, NULL);
       startTime = 1000000 * tv.tv_sec + tv.tv_usec;
@@ -505,9 +496,9 @@ controlThread (void *)
       //------------------------Read Euler angles-- -- --------------------------
       ahrs.getEuler (&roll, &pitch, &yaw);
 
-      roll *= (M_PI / 180.0);
-      pitch *= (M_PI / 180.0);
-      yaw *= (M_PI / 180.0);
+      //  roll *= (M_PI / 180.0);
+      //  pitch *= (M_PI / 180.0);
+      //  yaw *= (M_PI / 180.0);
 
       //-------------------Discard the time of the first cycle-- -- -------------
       if (!isFirst)
@@ -519,411 +510,164 @@ controlThread (void *)
 	}
       isFirst = 0;
 
-      //-------------Console and network output with a lowered rate-- -- --------
+      //------------- Output Calibration Parameters  ---------
 
+	 pthread_mutex_lock (&rcInputMutex);
+	l_ms_1 = g_ms_1;
+	l_ms_2 = g_ms_2;
+	pthread_mutex_unlock (&rcInputMutex);     
 
-//----------------------- Body Fixed Frame Parameters ----------------------------------------------------------------------------------------- 
+      Output (l_ms_1, l_ms_2);
+      printf ("1:%f \t 2:%f \n", g_ms_1, g_ms_2);
 
-      /*  Accelerometer readings are the in the Body fixed frame, these will be trasformed to Intertial frame using the rotational matrices.
+      // Get the time after the execution of the loop and sleep the appropriate number of microseconds
+      gettimeofday (&tv, NULL);
+      endTime = 1000000 * tv.tv_sec + tv.tv_usec;
 
-         These values would be used to get the intertial frame -- velocities and positions. */
+      elapsed = endTime - startTime;
 
-      acceleration_bff (0) = l_ax;
-      acceleration_bff (1) = l_ay;
-      acceleration_bff (2) = l_az;
-
-      omega_bff (0) = M_PI / 180.0 * l_gx;
-      omega_bff (1) = M_PI / 180.0 * l_gy;
-      omega_bff (2) = M_PI / 180.0 * l_gz;
-
-//---------------------------- Rotational Matrices --------------------------------------------------------------------------------------------
-
-      rotx << RotX (roll);
-      roty << RotY (pitch);
-      rotz << RotZ (yaw);
-
-//Complete Rotation Matrix From BFF to IF 
-
-      rot_bi = rotz * roty * rotx;
-
-
-// Jacobian Matrix 
-
-      jacobian << Jaco (roll, pitch, yaw);
-
-
-//-------------------- Intertial Frame Parameters ------------------------------------------------------
-
-
-      acceleration_if = rot_bi * acceleration_bff;
-      acceleration_if (2) = acceleration_if (2) - 1.0;
-      acceleration_if *= G_SI;
-
-      velocity_k1if = velocity_kif + acceleration_if * dt;
-      position_k1if = position_kif + velocity_k1if * dt;
-
-
-//--------------- Refresh Button: Pushing the "E" Lever on RC Transmitter ------------------------------   
-
-/*
-   Note: Pushing the lever down will set the : Posioition and velocity values to zero. And on pushing it back up, new computed values of position and velocity will be used.
-         This needs to be done because, we get both position and velocity terms upon intergration. All the sensors of baton take some time to spit to the right values upon initialization.           So the intially velcity and position terms will be an intergration of noise. Once we sensors begin to give constant values, we refresh velocity and position, so that they integrate
-         the right values and give us good results. 
-*/
-
-      if (l_resetValue < 960)
+      if (elapsed < PERIOD_CONTROL_LOOP)
 	{
-	  velocity_k1if << 0, 0, 0;
-	  position_k1if << 0, 0, 0;
+	  elapsedOutput_t1 = PERIOD_CONTROL_LOOP - elapsed;
+	  usleep (elapsedOutput_t1);
 	}
-
-      velocity_kif = velocity_k1if;
-      position_kif = position_k1if;
-
-      angle_kif (0) = roll;
-      angle_kif (1) = pitch;
-      angle_kif (2) = yaw;
-
-      omega_kif = jacobian * omega_bff;
-
-
-//---------------------------- Auto Controller -------------------------------------------
-
-      // WARNING: l_gz is in degrees and l_ax is normalized to 1.0
-
-/*  float k1 = -1, k2 = -0.1; // Thrust gains
-    float k3 = -1, k4 = -1, k7 =-1, k8=-8; // alpha gains        // gain values from matlab simulations
-    float k5 = 1, k6 = -1,k9 = -1, k10 = -4; // beta gains
-*/
-      float k1 = -1, k2 = -0.1;	// Thrust gai1   
-      float k3 = -0.95, k4 = -0.05, k7 = -1, k8 = -8;	// alpha gains     // Adjusted gain values after flight tests
-      float k5 = -0.95, k6 = -0.05, k9 = -1, k10 = -4;	// beta gains
-
-      k3 = -1;
-      k5 = -1;
-      k4 = 0;
-      k6 = 0;
-
-      // Settiing linear position and velocity gains to zero temporarily because estimates are bad.
-      k7 = -1;
-      k8 = 0;
-      k9 = -1;
-      k10 = 0;
-
-      float x_des = (float) (l_periodBetaAngle - 1501) / 500.0 * 0.1;
-      float y_des = (float) (l_periodAlphaAngle - 1498) / 500.0 * 0.1;
-
-      position_kif (0) = 0;
-      position_kif (1) = 0;
-      velocity_kif << 0, 0, 0;
-
-      position_des_kif << x_des, y_des, 0;
-      velocity_des_kif << 0, 0, 0;
-      angle_des_kif << 0, 0, 0;
-      omega_des_kif << 0, 0, 0;
-
-//------------------------------------ Auto Controller Equations ----------------------------
-
-      // float cmd_thrust = mass * G_SI + k1 * (position_kif(2) - position_des_kif(2)) + k2 * (velocity_kif(2) - velocity_des_kif(2));
-      float cmd_alpha =
-	k3 * (angle_kif (1) - angle_des_kif (1)) + k4 * (omega_kif (1) -
-							 omega_des_kif (1)) +
-	k7 * (position_kif (0) - position_des_kif (0)) +
-	k8 * (velocity_kif (0) - velocity_des_kif (0));
-      float cmd_beta =
-	k5 * (angle_kif (0) - angle_des_kif (0)) + k6 * (omega_kif (0) -
-							 omega_des_kif (0)) +
-	k9 * (position_kif (1) - position_des_kif (1)) +
-	k10 * (velocity_kif (1) - velocity_des_kif (1));
-
-          float ms_2 = AutoBetaMs (cmd_beta);
-           float ms_1 = AutoAlphaMs (cmd_alpha);
-
-
-//------------------------------------- Thrust Computation ---------------------------------
-
-      float m =  0.001202;      // 0.001;
-      float c = -0.3126;        //-0.15;
-     //cout<<l_periodRotorSpeed<<endl;
-      float thrust = m * l_periodRotorSpeed + c;
-
-//-------------------------------------- Output To Pins -----------------------------------
-
-      Output (ms_1, ms_2, thrust);
-
-
-
-
-}
-
-
-//------------------------------ Calibration -------------------------------------------------- 
-
-else if(d == 'y'){
-      if (kbhit () != 0)
-	{
-	  c = getchar ();
-	}
-      /* If a key has been pressed */
-      if (c == 'q')
-	{
-	  l_ca_ms = l_ca_ms + 0.01;
-          //Output (l_ca_ms, l_cb_ms,0);
-	  pwm1.set_duty_cycle (PWM_OUTPUT_1, l_ca_ms);
-	  pwm2.set_duty_cycle (PWM_OUTPUT_2, l_cb_ms );
-
-	 c = '0';		// and put it back to \0
-	 
-	}
-      else if (c == 'a')
-	{
-
-	  l_ca_ms = l_ca_ms - 0.01;
-        //  Output (l_ca_ms,l_cb_ms,0);
-	 pwm1.set_duty_cycle (PWM_OUTPUT_1, l_ca_ms);
-	  pwm2.set_duty_cycle (PWM_OUTPUT_2, l_cb_ms);
-
-	  c = '0';
-
-	}
-
-      else if (c == 'w')
-	{
-
-	  l_cb_ms = l_cb_ms + 0.01;
-        //  Output (l_ca_ms,l_cb_ms,0);
-	 pwm1.set_duty_cycle (PWM_OUTPUT_1, l_ca_ms);
-	  pwm2.set_duty_cycle (PWM_OUTPUT_2, l_cb_ms);
-
-	  c = '0';
-
-	}
-
-      else if (c == 's')
-	{
-
-	  l_cb_ms = l_cb_ms - 0.01;
-        //  Output (l_ca_ms,l_cb_ms,0);
-	 pwm1.set_duty_cycle (PWM_OUTPUT_1, l_ca_ms);
-	  pwm2.set_duty_cycle (PWM_OUTPUT_2, l_cb_ms);
-
-	  c = '0';
-
-	}
-	else if(c == 'd'){
-        float ma = ComputeAlphaSlope(l_ca_ms);
-        float mb = ComputeBetaSlope (l_cb_ms);
-        printf("new intercept :: alpha:%f \t beta: %f \n",l_ca_ms,l_cb_ms);
-	printf("new slope :: alpha:%f \t beta:%f\n",ma,mb);
-  	break;
-	}
-
-       pwm1.set_duty_cycle (PWM_OUTPUT_1, l_ca_ms);
-          pwm2.set_duty_cycle (PWM_OUTPUT_2, l_cb_ms);
-
-      
 
 
     }
-
 }
 
+void *
+calibrationThread (void *)
+{
 
-  // Get the time after the execution of the loop and sleep the appropriate number of microseconds
-  gettimeofday (&tv, NULL);
-  endTime = 1000000 * tv.tv_sec + tv.tv_usec;
+  struct timeval tv;
+  unsigned long startTime, endTime, elapsed;
 
-  elapsed = endTime - startTime;
+  float dt = (float) PERIOD_CALIBRATION_LOOP / 1000000.0;
 
+  int c;
+//  char c;
+  float l_ms_1;
+  float l_ms_2;
 
-  if (elapsed < PERIOD_CONTROL_LOOP)
+  while (1)
     {
-      elapsedOutput_t1 = PERIOD_CONTROL_LOOP - elapsed;
-      usleep (elapsedOutput_t1);
-    }
 
+// Get the time at the start of the loop
+      gettimeofday (&tv, NULL);
+      startTime = 1000000 * tv.tv_sec + tv.tv_usec;
+
+      pthread_mutex_lock (&rcInputMutex);
+      l_ms_1 = g_ms_1;
+      l_ms_2 = g_ms_2;
+
+      pthread_mutex_unlock (&rcInputMutex);
+
+
+      switch (c = getchar ())
+	{
+	case 'q':
+	  l_ms_1 = l_ms_1 + 0.01;
+	  c = '0';
+	  break;
+	case 'a':
+	  l_ms_1 = l_ms_1 - 0.01;
+	  c = '0';
+	  break;
+	case 'w':
+	  l_ms_2 = l_ms_2 + 0.01;
+	  c = '0';
+	  break;
+	case 's':
+	  l_ms_2 = l_ms_2 - 0.01;
+	  c = '0';
+	  break;
+
+
+	}
+
+
+
+      pthread_mutex_lock (&rcInputMutex);
+
+      g_ms_1 = l_ms_1;
+      g_ms_2 = l_ms_2;
+
+      pthread_mutex_unlock (&rcInputMutex);
+
+
+      // Get the time after the execution of the loop and sleep the appropriate number of microseconds
+      gettimeofday (&tv, NULL);
+      endTime = 1000000 * tv.tv_sec + tv.tv_usec;
+
+      elapsed = endTime - startTime;
+
+      if (elapsed < PERIOD_CALIBRATION_LOOP)
+	{
+	  elapsedOutput_t2 = PERIOD_CALIBRATION_LOOP - elapsed;
+	  usleep (elapsedOutput_t2);
+	}
+    }
 
 }
 
+void *
+outputThread (void *)
+{
 
-/*__________________________________ _______________________________________________________________________________________________________________________________________________________
+  struct timeval tv;
+  unsigned long startTime, endTime, elapsed;
+
+  float dt = (float) PERIOD_OUTPUT_LOOP / 1000000.0;
+
+  while (1)
+    {
+
+      float l_ms_1;
+      float l_ms_2;
+      float l_roll;
+      float l_pitch;
+
+
+      pthread_mutex_lock (&rcInputMutex);
+      l_ms_1 = g_ms_1;
+      l_ms_2 = g_ms_2;
+      l_roll = roll;
+      l_pitch = pitch;
+      pthread_mutex_unlock (&rcInputMutex);
+
+//      printf ("\t Offsets ->\t alpha:%f beta:%f \t AHRS -> \t roll:%f  pitch:%f \n", l_ms_1,
+//            l_ms_2, l_roll, l_pitch);
+
+
+// Get the time at the start of the loop
+      gettimeofday (&tv, NULL);
+      startTime = 1000000 * tv.tv_sec + tv.tv_usec;
+
+
+      // Get the time after the execution of the loop and sleep the appropriate number of microseconds
+      gettimeofday (&tv, NULL);
+      endTime = 1000000 * tv.tv_sec + tv.tv_usec;
+
+      elapsed = endTime - startTime;
+
+      if (elapsed < PERIOD_OUTPUT_LOOP)
+	{
+	  elapsedOutput_t3 = PERIOD_OUTPUT_LOOP - elapsed;
+	  usleep (elapsedOutput_t3);
+	}
+    }
+
+}
+
+/*_________________________________________________________________________________________________________________________________________________________________________________________
 *
 * 					                      ***** Functions *****
 *__________________________________________________________________________________________________________________________________________________________________________________________*/
 //2functions
 
-
-int
-kbhit (void)
-{
-  struct timeval tv;
-  fd_set read_fd;
-
-  /* Do not wait at all, not even a microsecond */
-  tv.tv_sec = 0;
-  tv.tv_usec = 0;
-
-  /* Must be done first to initialize read_fd */
-  FD_ZERO (&read_fd);
-
-  /* Makes select() ask if input is ready:
-   * 0 is the file descriptor for stdin    */
-  FD_SET (0, &read_fd);
-
-  /* The first parameter is the number of the
-   * largest file descriptor to check + 1. */
-  if (select (1, &read_fd, NULL, /*No writes */ NULL, /*No exceptions */ &tv)
-      == -1)
-    return 0;			/* An error occured */
-
-  /*  read_fd now holds a bit map of files that are
-   * readable. We test the entry for the standard
-   * input (file 0). */
-
-  if (FD_ISSET (0, &read_fd))
-    /* Character pending on stdin */
-    return 1;
-
-  /* no characters were pending */
-  return 0;
-}
-
-
-MatrixXd
-RotX (float roll_x)
-{
-
-
-  MatrixXd l_rotx (3, 3);
-
-  // Roll
-
-  l_rotx (0, 0) = 1.0;
-  l_rotx (0, 1) = 0.0;
-  l_rotx (0, 2) = 0.0;
-  l_rotx (1, 0) = 0.0;
-  l_rotx (1, 1) = cos (roll_x);
-  l_rotx (1, 2) = -sin (roll_x);
-  l_rotx (2, 0) = 0.0;
-  l_rotx (2, 1) = sin (roll_x);
-  l_rotx (2, 2) = cos (roll_x);
-
-  return (l_rotx);
-}
-
-MatrixXd
-RotY (float pitch_y)
-{
-
-  MatrixXd l_roty (3, 3);
-
-  // Pitch
-
-  l_roty (0, 0) = cos (pitch_y);
-  l_roty (0, 1) = 0.0;
-  l_roty (0, 2) = sin (pitch_y);
-  l_roty (1, 0) = 0.0;
-  l_roty (1, 1) = 1.0;
-  l_roty (1, 2) = 0.0;
-  l_roty (2, 0) = -sin (pitch_y);
-  l_roty (2, 1) = 0.0;
-  l_roty (2, 2) = cos (pitch_y);
-  return (l_roty);
-}
-
-MatrixXd
-RotZ (float yaw_z)
-{
-
-  MatrixXd l_rotz (3, 3);
-
-  l_rotz (0, 0) = cos (yaw_z);
-  l_rotz (0, 1) = -sin (yaw_z);
-  l_rotz (0, 2) = 0.0;
-  l_rotz (1, 0) = sin (yaw_z);
-  l_rotz (1, 1) = cos (yaw_z);
-  l_rotz (1, 2) = 0.0;
-  l_rotz (2, 0) = 0.0;
-  l_rotz (2, 1) = 0.0;
-  l_rotz (2, 2) = 1.0;
-  return (l_rotz);
-
-}
-
-MatrixXd
-Jaco (float roll_x, float pitch_y, float yaw_z)
-{
-
-  MatrixXd l_jacobian (3, 3);
-
-  jacobian (0, 0) = 1.0;
-  jacobian (0, 1) = sin (roll) * tan (pitch);
-  jacobian (0, 2) = cos (roll) * tan (pitch);
-  jacobian (1, 0) = 0;
-  jacobian (1, 1) = cos (roll);
-  jacobian (1, 2) = -sin (roll);
-  jacobian (2, 0) = 0;
-  jacobian (2, 1) = sin (roll) / cos (pitch);
-  jacobian (2, 2) = cos (roll) / cos (pitch);
-
-  return (l_jacobian);
-}
-
-
-float
-setSlope (float c)
-{
-
-  float m = (1.3 - c) / -12;
-  return (m);
-
-}
-
-
-
-float
-AutoBetaMs (float beta)
-{
-  float beta_d = beta * 180 / M_PI;
-  // printf("beta_d:%f\n",beta_d);
-  float mb_ms = 0.02;//0;		//0.016;              //0.013;//0.0214;
-  float cb_ms = 1.42;
-
-  float b_ms = mb_ms * beta_d + cb_ms;
-  return (b_ms);
-}
-
-float
-AutoAlphaMs (float alpha)
-{
-  // float ca_ms = 1.45;
-//  float ma_ms = 0;//0.0125 ; 
-
-
-  float alpha_d = alpha * 180 / M_PI;
-  cout<<alpha_d;
-   ma_ms = 0.015;//0.0125;//0.0117;           // 0.015;
-   ca_ms = 1.45;//1.44;
-
-  float a_ms = ma_ms * alpha_d + ca_ms;
-  return (a_ms);
-
-}
-
-float ComputeAlphaSlope(float ca){
-        float angle= 80-90;
-	float ma = (1.3-ca)/angle;
-	return(ma);
-}
-
-float ComputeBetaSlope(float cb){
-	float angle = 84-90;
-        float mb = (1.3-cb)/angle;
-        return(mb);
-}
-
 void
-Output (float ms1, float ms2, float ms3)
+Output (float ms1, float ms2)
 {
   // ms1 = 1.45;
   //  ms2 = 1.45;
@@ -946,9 +690,10 @@ Output (float ms1, float ms2, float ms3)
 */
   pwm1.set_duty_cycle (PWM_OUTPUT_1, ms1);
   pwm2.set_duty_cycle (PWM_OUTPUT_2, ms2);
-  pwm3.set_duty_cycle (PWM_OUTPUT_3, ms3);
-  pwm4.set_duty_cycle (PWM_OUTPUT_4, ms3);
+  // pwm3.set_duty_cycle (PWM_OUTPUT_3, ms3);
+  // pwm4.set_duty_cycle (PWM_OUTPUT_4, ms3);
 }
+
 
 /*__________________________________________________________________________________________________________________________________________________________________________________________
 *
@@ -1052,16 +797,23 @@ main (int argc, char *argv[])
 
   imuSetup ();
   servoSetup ();
+  //initscr();
 
+  // keypad(stdscr, TRUE);
+  // nonl();
+  // cbreak();
+  // noecho();
+
+  //refresh();
   //---------------------- Calling the threads -------------------------------
 
   pthread_create (&thread1, NULL, controlThread, NULL);
-  //pthread_detach (thread1);
-  //pthread_create (&thread2, NULL, inputThread, NULL);
-  //pthread_detach (thread2);
-  //pthread_create (&thread3, NULL, outputThread, NULL);
+  pthread_detach (thread1);
+  pthread_create (&thread2, NULL, calibrationThread, NULL);
+  pthread_detach (thread2);
+  pthread_create (&thread3, NULL, outputThread, NULL);
   pthread_exit (&thread1);
-  //pthread_exit (&thread2);
-  //pthread_exit (&thread3);
+  pthread_exit (&thread2);
+  pthread_exit (&thread3);
 
 }
