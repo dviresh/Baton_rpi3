@@ -185,8 +185,8 @@ float 		    g_k1 = -1.0;
 float 		    g_k2 = -0.1;
 float 		    g_k3 = -1.0;
 float               g_k4 = -1.0*0.01;
-float               g_k5 = 0.77;//1.0;
-float               g_k6 = 2.0*0.01;
+float               g_k5 = 0.6;//1.0;
+float               g_k6 = 3.0*0.01;
 float               g_k7 = -1.0;
 float               g_k8 = -8.0;
 float               g_k9 = -1.0;
@@ -643,14 +643,14 @@ if (!isFirst)
       //g_k6 = g_k6*0.01;
 
       // Settiing linear position and velocity gains to zero temporarily because estimates are bad.
-      g_k7 = 0;//-1;
+      g_k7 = -1;
       g_k8 =  0;//0;
-      g_k9 = 0;//-1;
+      g_k9 = 1;
       g_k10 = 0;//`0;
-/*
-      float x_des =  (float) (l_periodBetaAngle - 1501) / 500.0 * 0.1;
-      float y_des = (float) (l_periodAlphaAngle - 1498) / 500.0 * 0.1;
 
+       position_des_kif(1) =  (float) (l_periodBetaAngle - 1409) / 750.0 * 0.1;
+       position_des_kif(0) = (float) (l_periodAlphaAngle - 1416) / 750.0 * 0.1;
+/*
       position_kif (0) = 0;
       position_kif (1) = 0;
       velocity_kif << 0, 0, 0;
@@ -722,7 +722,7 @@ if (!isFirst)
 //------------------------------------- Thrust Computation ---------------------------------
 
       float m =  0.001202;	// 0.001;
-      float c = -0.3064;//-0.3126;	//-0.15;
+      float c = -0.3174;//0.3064;//-0.3126;	//-0.15;
       //cout<<l_periodRotorSpeed<<endl;
       float thrust = m * l_periodRotorSpeed + c;
 
