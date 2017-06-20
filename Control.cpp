@@ -176,21 +176,21 @@ int                 g_AlphaControlRad;
 int                 g_BetaControlRad;
 int                 g_ThrustControlRadPerSec;
 int                 g_ResetValuePeriod;
-float		    g_ma = 0.012 ;
-float               g_ca = 1.35;//1.44;//1.36;
-float               g_mb = 0.04;//0;//0.02;
-float               g_cb =1.65;//1.62;//1.48;//1.59;
+float		    g_ma = 0.04;//0.012 ;
+float               g_ca = 1.51;
+float               g_mb = 0.02;//0.02;
+float               g_cb =1.36;
 
-float 		    g_k1 = -1.0;
-float 		    g_k2 = -0.1;
-float 		    g_k3 = -1.0;
-float               g_k4 = -1.0*0.01;
-float               g_k5 = 0.6;//1.0;
-float               g_k6 = 3.0*0.01;
-float               g_k7 = -1.0;
-float               g_k8 = -8.0;
-float               g_k9 = -1.0;
-float               g_k10 = -4.0;
+float 		    g_k1 = -1.0;	// thrust
+float 		    g_k2 = -0.1;	// thrust
+float 		    g_k3 = 1.0;	// alpha
+float               g_k4 = 1.0*0.01;	// alpha
+float               g_k5 = 1;//1.0;	// beta
+float               g_k6 = 1.0*0.01;	// beta
+float               g_k7 = -1.0;	// alpha
+float               g_k8 = -8.0;	// alpha
+float               g_k9 = -1.0;	// beta
+float               g_k10 = -4.0;	// beta
 
 ////////////////////////////////////////////////////////////////////////
 // Controller state variables (mutex protected)
@@ -643,19 +643,22 @@ if (!isFirst)
       //g_k6 = g_k6*0.01;
 
       // Settiing linear position and velocity gains to zero temporarily because estimates are bad.
-      g_k7 = -1;
+      g_k7 = 0;//-1;
       g_k8 =  0;//0;
-      g_k9 = 1;
+      g_k9 = 0;//1;
       g_k10 = 0;//`0;
 
-       position_des_kif(1) =  (float) (l_periodBetaAngle - 1409) / 750.0 * 0.1;
-       position_des_kif(0) = (float) (l_periodAlphaAngle - 1416) / 750.0 * 0.1;
-/*
+       position_des_kif(0) =  (float) (l_periodBetaAngle - 1409) / 750.0 * 0.1;
+       position_des_kif(1) = (float) (l_periodAlphaAngle - 1416) / 750.0 * 0.1;
+    
+       //printf("%f\t%f\n",position_kif(1),position_kif(0));
+
       position_kif (0) = 0;
       position_kif (1) = 0;
+/*
       velocity_kif << 0, 0, 0;
 
-      position_des_kif << x_des, y_des, 0;
+      position_des_kif << 0, 0, 0;
       velocity_des_kif << 0, 0, 0;
       angle_des_kif << 0, 0, 0;
       omega_des_kif << 0, 0, 0;
@@ -664,7 +667,7 @@ if (!isFirst)
 
       // float cmd_thrust = mass * G_SI + k1 * (position_kif(2) - position_des_kif(2)) + k2 * (velocity_kif(2) - velocity_des_kif(2));
       float cmd_alpha =
-	g_k3 * (angle_kif (1) - angle_des_kif (1)) + g_k4 * (omega_kif (1) -						 omega_des_kif (1)) +
+	g_k3 * (angle_kif (1) - angle_des_kif (1)) + g_k4 * (omega_kif (1) - omega_des_kif (1)) +
 	g_k7 * (position_kif (0) - position_des_kif (0)) +
 	g_k8 * (velocity_kif (0) - velocity_des_kif (0));
       float cmd_beta =
@@ -728,7 +731,7 @@ if (!isFirst)
 
 
 //-------------------------------------- Output To Pins -----------------------------------
-
+//	printf("ms_1:%f\t,ms_2:%f",ms_1,ms_2);
       Output (ms_1, ms_2, thrust);
 	//cout<<ms_1<<ms_2<<endl;
 //	printf("%f \t %f \n",ms_1,ms_2);
@@ -969,7 +972,7 @@ outputThread (void *)
       for (int i = 0; i < 3; i++)
 	l_inputs[i] = g_inputs[i];
       pthread_mutex_unlock (&controllerStateMutex);	// Mutex off
-
+printf("Ca:%f\tCb:%f\n",g_ca,g_cb);
 //----------------------- Output Inputs from RC - Controller ---------------------------------------------------------------------------
 
       // printf("RC thrust: %d\tRC alpha: %d\tRC beta: %d\n", l_period0, l_period1, l_period2);
@@ -978,7 +981,7 @@ outputThread (void *)
 
 //cout<<g_k5<<endl;
 
-printf("ca:%f\tcb:%f\t\tk3:%f\tk4:%f\tk5:%f\tk6:%f\n",g_ca,g_cb,g_k3,g_k4,g_k5,g_k6);
+//printf("ca:%f\tcb:%f\t\tk3:%f\tk4:%f\tk5:%f\tk6:%f\n",g_ca,g_cb,g_k3,g_k4,g_k5,g_k6);
 
 //printf("%lu,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f,%0.6f\n",startTime,l_state[0],l_state[1],l_state[2],l_state[3],l_state[4],l_state[5],l_state[6],l_state[7],l_state[8],l_state[9],l_state[10],l_state[11]);
 
