@@ -183,10 +183,10 @@ float               g_cb =1.36;
 
 float 		    g_k1 = -1.0;	// thrust
 float 		    g_k2 = -0.1;	// thrust
-float 		    g_k3 = 1.0;	// alpha
-float               g_k4 = 1.0*0.01;	// alpha
-float               g_k5 = 1;//1.0;	// beta
-float               g_k6 = 1.0*0.01;	// beta
+float 		    g_k3 = .6908;//1.1931;	// alpha
+float               g_k4 = .2;//0.67*0.3709;	// alpha
+float               g_k5 = .6908;//1.1931;//1.0;	// beta
+float               g_k6 = .2;//0.67*0.3709;	// beta
 float               g_k7 = -1.0;	// alpha
 float               g_k8 = -8.0;	// alpha
 float               g_k9 = -1.0;	// beta
