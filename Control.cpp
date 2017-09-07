@@ -178,21 +178,21 @@ int                 g_AlphaControlRad;
 int                 g_BetaControlRad;
 int                 g_ThrustControlRadPerSec;
 int                 g_ResetValuePeriod;
-float		    g_ma = 0.04;//0.012 ;
-float               g_ca = 1.51;
-float               g_mb = 0.02;//0.02;
-float               g_cb =1.36;
+float		    g_ma = 0.04;                //0.012; used to calibrate the slope of the alpha/ pitch servo control curve- linear
+float               g_ca = 1.51;                //offset/zero of servo. Level of alpha/pitch servo
+float               g_mb = 0.02;                //0.02; used to calibrate the slope of the beta/roll servo control curve -linear
+float               g_cb =1.36;                 //offset/zero of servo. Level of beta/roll servo
 
 float 		    g_k1 = -1.0;	// thrust
 float 		    g_k2 = -0.1;	// thrust
-float 		    g_k3 = .6908;//1.1931;	// alpha
-float               g_k4 = .2;//0.67*0.3709;	// alpha
-float               g_k5 = .6908;//1.1931;//1.0;	// beta
-float               g_k6 = .2;//0.67*0.3709;	// beta
-float               g_k7 = -1.0;	// alpha
-float               g_k8 = -8.0;	// alpha
-float               g_k9 = -1.0;	// beta
-float               g_k10 = -4.0;	// beta
+float 		    g_k3 = .45;//1.1931;	// alpha (lower/pitch) proportional gain: response to input
+float               g_k4 = .005;//0.67*0.3709;	// alpha (lower/pitch) derivative gain: how quickly it responds
+float               g_k5 = .45;//1.1931;//1.0;	// beta (upper/roll) proportional gain: response to input
+float               g_k6 = .005;//0.67*0.3709;	// beta (upper/roll) derivative gain: how quickly it responds
+float               g_k7 = -1.0;	// alpha (lower/pitch) porportional gain: used to control the drift  
+float               g_k8 = -8.0;	// alpha (lower/pitch) derivative gain: used to control the drift 
+float               g_k9 = -1.0;	// beta (upper/roll) porportional gain: used to control the drift 
+float               g_k10 = -4.0;	// beta (upper/roll) derivative gain: used to control the drift
 
 ////////////////////////////////////////////////////////////////////////
 // Controller state variables (mutex protected)
@@ -668,6 +668,8 @@ if (!isFirst)
 //------------------------------------ Auto Controller Equations ----------------------------
 
       // float cmd_thrust = mass * G_SI + k1 * (position_kif(2) - position_des_kif(2)) + k2 * (velocity_kif(2) - velocity_des_kif(2));
+      // outputs in radians (in AutoAlphaMS it is converted first to degrees and then to MS) the angle to return to desired position
+      // (currently 0 which is the level).
       float cmd_alpha =
 	g_k3 * (angle_kif (1) - angle_des_kif (1)) + g_k4 * (omega_kif (1) - omega_des_kif (1)) +
 	g_k7 * (position_kif (0) - position_des_kif (0)) +
