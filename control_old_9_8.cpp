@@ -205,26 +205,21 @@ int g_ResetValuePeriod;
 int g_switchSE;
 int g_switchSF;
 float g_zd;
+float g_ma = 0.04;		//0.012 ;
+float g_ca = 1.43;		//1.27;//1.51;
+float g_mb = 0.02;		//0.02;
+float g_cb = 1.46;		//1.21;//1.36;
+float g_k1 = -1.0;		// thrust -- P gain
+float g_k2 = -0.1;		// thrust -- D gain
+float g_k3 = 0.6;		// alpha  -- P gain
+float g_k4 = 0.07;		// alpha   -- D gain
+float g_k5 = 0.6;		// beta    -- P gain
+float g_k6 = 0.07;		//  beta    -- D gain
+float g_k7 = -1.0;		// alpha
+float g_k8 = -8.0;		// alpha
+float g_k9 = -1.0;		// beta
+float g_k10 = -4.0;		// beta
 float g_zp = 0.0;
-float g_c[15];
-
-// Gains and slope offsets -- Note: to change these values, edit config.txt
-float g_ma = g_c[0];		
-float g_ca = g_c[1];		
-float g_mb = g_c[2];		
-float g_cb = g_c[3];		
-float g_k1 = g_c[4];		// thrust -- P gain
-float g_k2 = g_c[5];		// thrust -- D gain
-float g_k3 = g_c[6];		// alpha  -- P gain
-float g_k4 = g_c[7];		// alpha  -- D gain
-float g_k5 = g_c[8];		// beta   -- P gain
-float g_k6 = g_c[9];		//  beta  -- D gain
-float g_k7 = g_c[10];		// alpha
-float g_k8 = g_c[11];		// alpha
-float g_k9 = g_c[12];		// beta
-float g_k10 = g_c[13];		// beta
-
-
 //----------------------------------------------------------------------------------------------------------
 //----- Controller state variables (mutex protected)
 //----------------------------------------------------------------------------------------------------------
@@ -1103,10 +1098,8 @@ outputThread (void *)
 //------------------------------------ Outputs -----------------------------------------------------------------------
 
 // Monitor Outputs
-      //printf ("Ca:%f\tCb:%f\n", l_ca, l_cb);
+      printf ("Ca:%f\tCb:%f\n", l_ca, l_cb);
 
-// Gaines and offsets
-	printf("%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\n",g_ma, g_ca, g_mb, g_cb, g_k1, g_k2, g_k3, g_k4, g_k5, g_k6, g_k7, g_k8, g_k9, g_k10);
 // Output Inputs from RC - Controller 
       // printf("RC thrust: %d\tRC alpha: %d\tRC beta: %d\n", l_period0, l_period1, l_period2);
 
@@ -1461,29 +1454,6 @@ main (int argc, char *argv[])
       servaddr.sin_addr.s_addr = inet_addr ("127.0.0.1");
       servaddr.sin_port = htons (7000);
     }
-
-
-    //------------------ Readig contents from config file ------------------
-
-    FILE *fs;
-    FILE *fp;
-    fs = fopen("config.txt","r");
-    int i = 0;
-    char buff[255];
-    char ch[255];
-    //float num;
-    while(i<14){
-    	fgets(buff, 255, fs);
-    	fp = fopen("config_rough","w+");
-    	fputs(buff, fp);
-    	fseek(fp,5,SEEK_SET);
-    	fgets(ch, 255, (FILE*)fp);
-    	g_c[i] =  atof(ch);
-    	//printf("%f\n",num);
-    	fclose(fp);
-    	i++;
-    }
-
 
   //-------------------- IMU setup and main loop ----------------------------
 
