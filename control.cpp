@@ -204,9 +204,15 @@ int g_ThrustControlRadPerSec;
 int g_ResetValuePeriod;
 int g_switchSE;
 int g_switchSF;
+
+// global constants and variables
+float g_c[15];
+
+// gps constants and variables
 float g_zd;
 float g_zp = 0.0;
-float g_c[15];
+double g_millisec; 
+
 
 // Gains and slope offsets -- Note: to change these values, edit config.txt
 float g_ma;
@@ -463,6 +469,7 @@ controlThread (void *)
       float l_y;
       float l_zd;
       float l_zp;
+      float l_millisec;
 
       pthread_mutex_lock (&rcInputMutex);
       // l_z = g_z;
@@ -477,6 +484,7 @@ controlThread (void *)
       l_switchSF = g_switchSF;
       l_x = g_x;
       l_y = g_y;
+      l_millisec = g_millisec;
       pthread_mutex_unlock (&rcInputMutex);
 
 
@@ -679,13 +687,22 @@ controlThread (void *)
 	    {
 
 	      float t_0 = 1.8;	// Combined threshold thrust
+	      float distzd = l_z - l_zd;
+              float distzp = l_z - l_zp;
+	      float velz  = distzp/1;
+	      if(isnan(velz)==1){
+		velz = 0.0;
+		}
 
 	      float thrust =
-		t_0 + g_k1 * (l_z - g_zd) + g_k2 * (l_z * dt - l_zp) / dt;
-	      l_zp = l_z;
-
+		//t_0 + g_k1 * (l_z - g_zd) + g_k2 * (l_z * dt - l_zp) / dt;
+		t_0 + g_k1 * (distzd) + g_k2 * (velz);
+	      l_zp = l_z; 
+		
 	      float ms_3 = AutoThrottle (thrust);
 	      float ms_4 = ms_3;
+
+	printf("ms3:%f \t distzd%f \t distzp:%f \t lz:%f \t lzd:%f\n",ms_3 ,distzd, distzp,l_z,l_zd);
 
 	      Output (ms_1, ms_2, ms_3, ms_3);
 	    }
@@ -759,6 +776,7 @@ gpsThread (void *)
   char c;
   float l_x;
   float l_y;
+  double l_millisec;
   struct timeval tv;
   unsigned long startTime, endTime, elapsed;
 
@@ -816,6 +834,8 @@ gpsThread (void *)
 	      g_z1 = l_z;
 	      g_x = l_x;
 	      g_y = l_y;
+	      g_millisec = pos_data[0]/1000;
+//	      printf("%.0lf s\n",l_millisec);
 	      //printf("%f\t%f\n",l_z,g_z1);
 	      // after desired message is successfully decoded, we can use the information stored in pos_data vector
 	      // right here, or we can do something with it from inside decodeSingleMessage() function(see ublox.h).
@@ -886,13 +906,14 @@ gpsThread (void *)
 	}
       pthread_mutex_lock (&gpsMutex);
       g_z1 = l_z;
-      //printf("%f\n",g_z);
+      g_millisec = l_millisec;
       pthread_mutex_unlock (&gpsMutex);
-      //printf("%f\t%f\n",l_z,g_z);
 
       // Get the time after the execution of the loop and sleep the appropriate number of microseconds
       gettimeofday (&tv, NULL);
       endTime = 1000000 * tv.tv_sec + tv.tv_usec;
+
+//	printf("%.0lf s\n",l_millisec);
 
       elapsed = endTime - startTime;
 
@@ -1057,6 +1078,10 @@ outputThread (void *)
       int elapsedt3;
       float l_ca;
       float l_cb;
+      float l_z;
+      float l_x;
+      float l_y;
+      double l_millisec;
 
       // Copy the RC controller inputs into a local variable (mutex protected)
       pthread_mutex_lock (&rcInputMutex);	// Mutex on
@@ -1080,6 +1105,10 @@ outputThread (void *)
       l_periodBetaAngle = g_BetaControlRad;
       l_periodRotorSpeed = g_ThrustControlRadPerSec;
       l_switchSF = g_switchSF;
+      l_z = g_z1;
+      l_millisec = g_millisec; 
+      l_x = g_x;
+      l_y = g_y;
       pthread_mutex_unlock (&rcInputMutex);	// Mutex off
 
 
@@ -1089,7 +1118,9 @@ outputThread (void *)
       if (l_switchSF > 2000)
 	{
 
-	  fp = fopen (filename, "a+");
+             fp = fopen (filename, "a+");
+  //          fprintf (fp," %f, %f, %f, %f\n", l_millisec, l_z, l_x, l_y);
+
 	  fprintf (fp,
 		   "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 		   l_state[0], l_state[1], l_state[2], l_state[3],
@@ -1097,16 +1128,21 @@ outputThread (void *)
 		   l_state[8], l_state[9], l_state[10], l_state[11],
 		   l_cmd_alpha, l_cmd_beta, g_k1, g_k2, g_k3, g_k4, g_k5,
 		   g_k6);
+
 	  fclose (fp);
 	}
 
-//------------------------------------ Outputs -----------------------------------------------------------------------
+//-------------------------------- Outputs -----------------------------------------------------------------------
+
+// GPS Outputs
+//	printf("millsec:%.0lf s\tz:%f\tx:%f\ty:%f\n", l_millisec, l_z, l_x, l_y);
+
 
 // Monitor Outputs
       //printf ("Ca:%f\tCb:%f\n", l_ca, l_cb);
 
 // Gaines and offsets
-      printf
+      //printf
 	("%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\t,%f\n",
 	 g_ma, g_ca, g_mb, g_cb, g_k1, g_k2, g_k3, g_k4, g_k5, g_k6, g_k7,
 	 g_k8, g_k9, g_k10);
@@ -1151,8 +1187,9 @@ float
 PeriodToAlt (int period)
 {
 
-  float m = 0.00195;
-  float c = -1.9149;
+  float m = 0.0098;//0.00195;
+  float c = -9.62;//-1.9149;
+
 
   float alt = m * period + c;
 
