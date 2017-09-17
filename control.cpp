@@ -119,7 +119,7 @@ float CBeta = 0.0007;
 #define MS_ZERO_ANGLE_2 1.45	//  alpha
 
 #define PERIOD_CONTROL_LOOP 2500	// microseconds = 2.5 ms
-#define PERIOD_GPS_LOOP     5000	// microseconds = 5 ms
+#define PERIOD_GPS_LOOP     200000	// microseconds = 200 ms
 #define PERIOD_INPUT_LOOP   10000	// microseconds = 10 ms
 #define PERIOD_OUTPUT_LOOP  100000	// microseconds = 100 ms
 //-------------------------------------------------------------------------------------------------------------------------------
@@ -230,6 +230,13 @@ float g_k8;			// alpha
 float g_k9;			// beta
 float g_k10;			// beta
 
+
+// PWM pulse inputs
+
+float g_ms1;
+float g_ms2;
+float g_ms3;
+float g_ms4;
 
 //----------------------------------------------------------------------------------------------------------
 //----- Controller state variables (mutex protected)
@@ -471,6 +478,9 @@ controlThread (void *)
       float l_zp;
       float l_millisec;
 
+      float ms_3;
+      float ms_4;
+
       pthread_mutex_lock (&rcInputMutex);
       // l_z = g_z;
       l_periodAlphaAngle = g_AlphaControlRad;
@@ -673,9 +683,6 @@ controlThread (void *)
       float ms_2 = AutoBetaMs (cmd_beta);
       float ms_1 = AutoAlphaMs (-cmd_alpha);
 
-
-
-
       if (++loopCount % 8 == 0)
 	{
 
@@ -686,7 +693,7 @@ controlThread (void *)
 	  if (l_switchSE < 1500)
 	    {
 
-	      float t_0 = 1.8;	// Combined threshold thrust
+	      float t_0 = 1.7;	// Combined threshold thrust
 	      float distzd = l_z - l_zd;
               float distzp = l_z - l_zp;
 	      float velz  = distzp/1;
@@ -699,11 +706,10 @@ controlThread (void *)
 		t_0 + g_k1 * (distzd) + g_k2 * (velz);
 	      l_zp = l_z; 
 		
-	      float ms_3 = AutoThrottle (thrust);
-	      float ms_4 = ms_3;
+	      ms_3 = AutoThrottle (thrust);
+	      ms_4 = ms_3;
 
-	printf("ms3:%f \t distzd%f \t distzp:%f \t lz:%f \t lzd:%f\n",ms_3 ,distzd, distzp,l_z,l_zd);
-
+	//printf("ms3:%f \t distzd%f \t distzp:%f \t lz:%f \t lzd:%f \t g_ca:%f \t g_cb: %f\n",ms_3 ,distzd, distzp,l_z,l_zd,g_ca,g_cb);
 	      Output (ms_1, ms_2, ms_3, ms_3);
 	    }
 
@@ -715,9 +721,10 @@ controlThread (void *)
 	      float m = 0.001202;
 	      float c = -0.3174;
 
-	      float ms_3 = m * l_periodRotorSpeed + c;
-	      float ms_4 = m * l_periodAlphaAngle + c;
-
+	      ms_3 = m * l_periodRotorSpeed + c;
+	      ms_4 = m * l_periodAlphaAngle + c;
+		
+	      printf("ca:%f \t cb:%f \n", g_ca,g_cb);
 	      Output (ms_1, ms_2, ms_3, ms_3);
 	    }
 
@@ -747,6 +754,8 @@ controlThread (void *)
       g_inputs[0] = l_periodAlphaAngle;
       g_inputs[1] = l_periodBetaAngle;
       g_inputs[2] = l_periodRotorSpeed;
+  
+      g_ms3 = ms_3;
       pthread_mutex_unlock (&controllerStateMutex);	// Mutex Off
 
       // Get the time after the execution of the loop and sleep the appropriate number of microseconds
@@ -832,6 +841,7 @@ gpsThread (void *)
 	      //printf("%f\t%f\n",ref_z,l_za);
 	      l_z = l_za - ref_z;
 	      g_z1 = l_z;
+//	      printf("%f\n",l_z);
 	      g_x = l_x;
 	      g_y = l_y;
 	      g_millisec = pos_data[0]/1000;
@@ -1082,6 +1092,11 @@ outputThread (void *)
       float l_x;
       float l_y;
       double l_millisec;
+      float l_ms1;
+      float l_ms2;
+      float l_ms3;
+      float l_ms4;
+      float l_zd;
 
       // Copy the RC controller inputs into a local variable (mutex protected)
       pthread_mutex_lock (&rcInputMutex);	// Mutex on
@@ -1106,9 +1121,11 @@ outputThread (void *)
       l_periodRotorSpeed = g_ThrustControlRadPerSec;
       l_switchSF = g_switchSF;
       l_z = g_z1;
+      l_z = g_zd;
       l_millisec = g_millisec; 
       l_x = g_x;
       l_y = g_y;
+      l_ms3 = g_ms3;
       pthread_mutex_unlock (&rcInputMutex);	// Mutex off
 
 
@@ -1122,11 +1139,11 @@ outputThread (void *)
   //          fprintf (fp," %f, %f, %f, %f\n", l_millisec, l_z, l_x, l_y);
 
 	  fprintf (fp,
-		   "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
+		   "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
 		   l_state[0], l_state[1], l_state[2], l_state[3],
 		   l_state[4], l_state[5], l_state[6], l_state[7],
 		   l_state[8], l_state[9], l_state[10], l_state[11],
-		   l_cmd_alpha, l_cmd_beta, g_k1, g_k2, g_k3, g_k4, g_k5,
+		   l_cmd_alpha, l_cmd_beta,l_z,l_ms3, g_k1, g_k2, g_k3, g_k4, g_k5,
 		   g_k6);
 
 	  fclose (fp);
